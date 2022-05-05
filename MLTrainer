@@ -1,0 +1,72 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import math
+from micromlgen import port
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import plot_confusion_matrix
+
+
+# this goes at the top of the Python script
+from embedded_window import Window
+
+if __name__ == '__main__':
+    # assume you saved your recordings into a "data" folder
+    NotBrush = pd.read_csv("NewOrientationNotBrushing.csv")
+    ActiveBrush = pd.read_csv('QuinnActiveBrush.csv')
+
+    ActiveBrush.plot(title='Active Brushing')
+    NotBrush.plot(title='Not Brushing')
+    plt.show()
+
+    # X is the array of features to train the model on
+    # y is the array of labels
+    X = np.vstack([
+        ActiveBrush.to_numpy(),
+        NotBrush.to_numpy(),
+    ])
+
+    y = np.concatenate([
+        0 * np.ones(len(ActiveBrush)),
+        1 * np.ones(len(NotBrush)),
+    ])
+
+    print("X.shape", X.shape)
+    print("y.shape", y.shape)
+
+
+# the rest goes right after the previous block of code
+# if using a board different than Rp2040 Connect, the sampling rate may be different!
+SAMPLING_RATE = 104
+# this is in milliseconds
+WINDOW_DURATION = 300
+
+window = Window(length=25, shift=3)
+
+# X_windows holds the input arranged in windows
+# features holds the extracted features for each window (min/max/mean/std...)
+# y_windows holds the most frequent label inside each window 
+X_windows, features, y_windows = window.fit_transform(X, y)
+
+print('X_windows.shape', X_windows.shape)
+print('features.shape', features.shape)
+print('y_windows.shape', y_windows.shape)
+
+# use half data for training, half for testing
+X_train, X_test, y_train, y_test = train_test_split(features, y_windows, test_size=0.5, random_state=0)
+clf = RandomForestClassifier(n_estimators=10, max_depth=10, random_state=0).fit(X_train, y_train)
+
+plot_confusion_matrix(clf, X_test, y_test, display_labels=['Brushing', 'NotBrushing'])
+plt.show()
+
+
+with open("WindowQuinn.h", "w") as file:
+   file.write(window.port())
+
+
+
+with open("ClassifierQuinn.h", "w") as file:
+  file.write(port(clf, classname="Classifier", classmap={0: "Active Brushing", 1: "Not Brushing"}))
+
